@@ -1,0 +1,48 @@
+---
+# Example playbook for custom web application service
+
+- name: Deploy web application service
+  hosts: webservers
+  become: true
+  vars:
+    systemd_service_name: "webapp"
+    systemd_service_description: "Web Application Service"
+    systemd_service_exec_start: "/opt/webapp/bin/webapp --port 8080 --config /opt/webapp/config/app.conf"
+    systemd_service_environment_vars:
+      PORT: "8080"
+      CONFIG_FILE: "/opt/webapp/config/app.conf"
+      LOG_FILE: "/var/log/webapp/app.log"
+
+    # Additional directories for web application
+    systemd_service_directories:
+      - path: "/opt/webapp"
+        owner: "webapp"
+        group: "webapp"
+        mode: "0755"
+      - path: "/opt/webapp/bin"
+        owner: "webapp"
+        group: "webapp"
+        mode: "0755"
+      - path: "/opt/webapp/config"
+        owner: "webapp"
+        group: "webapp"
+        mode: "0750"
+      - path: "/opt/webapp/static"
+        owner: "webapp"
+        group: "webapp"
+        mode: "0755"
+      - path: "/var/log/webapp"
+        owner: "webapp"
+        group: "webapp"
+        mode: "0755"
+      - path: "/var/lib/webapp"
+        owner: "webapp"
+        group: "webapp"
+        mode: "0750"
+      - path: "/var/lib/webapp/uploads"
+        owner: "webapp"
+        group: "webapp"
+        mode: "0750"
+
+  roles:
+    - golden_path_systemd

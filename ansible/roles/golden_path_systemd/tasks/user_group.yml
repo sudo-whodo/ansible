@@ -1,0 +1,42 @@
+---
+# User and group management tasks
+
+- name: Create system group for service
+  ansible.builtin.group:
+    name: "{{ systemd_service_group }}"
+    system: "{{ systemd_service_group_system }}"
+    state: present
+  become: true
+
+- name: Create system user for service (with home directory)
+  ansible.builtin.user:
+    name: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    home: "{{ systemd_service_user_home }}"
+    shell: "{{ systemd_service_user_shell }}"
+    system: "{{ systemd_service_user_system }}"
+    create_home: true
+    state: present
+  become: true
+  when: systemd_service_user_home != "none"
+
+- name: Create system user for service (no home directory)
+  ansible.builtin.user:
+    name: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    shell: "{{ systemd_service_user_shell }}"
+    system: "{{ systemd_service_user_system }}"
+    create_home: false
+    state: present
+  become: true
+  when: systemd_service_user_home == "none"
+
+- name: Set ownership of user home directory
+  ansible.builtin.file:
+    path: "{{ systemd_service_user_home }}"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "0755"
+    state: directory
+  become: true
+  when: systemd_service_user_home != "none"

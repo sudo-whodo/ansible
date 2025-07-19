@@ -1,0 +1,193 @@
+---
+# Podman Deployment Playbook using Golden Path Systemd Role
+# This playbook sets up Podman as a systemd service with proper user management
+
+- name: Deploy Podman Service using Golden Path Systemd
+  hosts: all
+  become: true
+  vars:
+    # Podman service configuration
+    systemd_service_name: "podman"
+    systemd_service_description: "Podman Container Service"
+    systemd_service_type: "notify"
+    systemd_service_exec_start: "/usr/bin/podman system service --time=0"
+    systemd_service_exec_reload: "/bin/kill -HUP $MAINPID"
+    systemd_service_restart: "on-failure"
+    systemd_service_restart_sec: "30"
+
+    # Enable sudo access for podman group
+    systemd_service_sudo_enabled: true
+    systemd_service_polkit_enabled: false
+
+    # Additional sudo permissions for podman platform management
+    systemd_service_additional_sudo_rules: |
+      # Podman platform socket management
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl start podman.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl stop podman.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl restart podman.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl reload podman.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl enable podman.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl disable podman.socket
+
+      # Podman service management (when socket activates it)
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl start podman.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl stop podman.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl restart podman.service
+
+      # Container management tools
+      %{{ systemd_service_group }} ALL=({{ systemd_service_user }}) NOPASSWD: /usr/bin/podman*
+      %{{ systemd_service_group }} ALL=({{ systemd_service_user }}) NOPASSWD: /usr/local/bin/podman-compose*
+      %{{ systemd_service_group }} ALL=({{ systemd_service_user }}) NOPASSWD: /usr/bin/buildah*
+      %{{ systemd_service_group }} ALL=({{ systemd_service_user }}) NOPASSWD: /usr/bin/skopeo*
+
+    # Don't create service file since Podman already has one
+    systemd_service_create_if_missing: false
+
+    # Custom drop-in configuration for Podman
+    systemd_service_drop_in_config: |
+      [Service]
+      # Podman-specific resource limits
+      LimitNOFILE=1048576
+      LimitNPROC=1048576
+      LimitCORE=infinity
+      TasksMax=infinity
+      TimeoutStartSec=0
+      TimeoutStopSec=30
+
+      # Memory and CPU limits
+      MemoryMax=8G
+      CPUQuota=400%
+
+      # Additional security for container runtime
+      ProtectKernelModules=false
+      ProtectKernelTunables=false
+      ProtectControlGroups=false
+      RestrictRealtime=false
+      SystemCallFilter=@system-service
+      SystemCallFilter=~@debug @mount @cpu-emulation @obsolete @privileged @reboot @swap @raw-io
+
+      [Unit]
+      # Dependencies for container runtime
+      After=network-online.target
+      Wants=network-online.target
+      After=time-sync.target
+      After=systemd-user-sessions.service
+
+    # Custom directories for Podman
+    systemd_service_directories:
+      - path: "/opt/podman"
+        owner: "podman"
+        group: "podman"
+        mode: "2755"
+      - path: "/opt/podman/containers"
+        owner: "podman"
+        group: "podman"
+        mode: "2750"
+      - path: "/opt/podman/images"
+        owner: "podman"
+        group: "podman"
+        mode: "2750"
+      - path: "/var/log/podman"
+        owner: "podman"
+        group: "podman"
+        mode: "2755"
+      - path: "/var/lib/podman"
+        owner: "podman"
+        group: "podman"
+        mode: "2750"
+      - path: "/var/lib/podman/storage"
+        owner: "podman"
+        group: "podman"
+        mode: "2750"
+
+  pre_tasks:
+    - name: Install Podman package
+      package:
+        name: podman
+        state: present
+
+    - name: Install additional container tools
+      ansible.builtin.package:
+        name:
+          - buildah
+          - skopeo
+          - crun
+          - python3-pip
+        state: present
+
+    - name: Install podman-compose via pip3
+      ansible.builtin.pip:
+        name: podman-compose
+        executable: pip3
+        state: present
+
+  roles:
+    - golden_path_systemd
+
+  post_tasks:
+    - name: Set up Podman socket service
+      ansible.builtin.systemd:
+        name: podman.socket
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Create Docker alias for Podman
+      ansible.builtin.file:
+        src: /usr/bin/podman
+        dest: /usr/local/bin/docker
+        state: link
+        force: true
+
+    - name: Find podman-compose installation path
+      ansible.builtin.command:
+        cmd: which podman-compose
+      register: podman_compose_path
+      changed_when: false
+      failed_when: false
+
+    - name: Create docker-compose alias for podman-compose
+      ansible.builtin.file:
+        src: "{{ podman_compose_path.stdout }}"
+        dest: /usr/local/bin/docker-compose
+        state: link
+        force: true
+      when: podman_compose_path.rc == 0
+
+    - name: Verify Podman service status
+      systemd:
+        name: podman.service
+      register: podman_service_status
+
+    - name: Display Podman service information
+      ansible.builtin.debug:
+        msg: |
+          Podman Service Status:
+          - Service: podman.service
+          - Status: {{ podman_service_status.status.ActiveState }}
+          - Enabled: {{ podman_service_status.status.UnitFileState }}
+          - User: podman
+          - Group: podman
+          - Storage Directory: /var/lib/podman/storage
+          - Log Tag: podman-service
+          - View logs: sudo journalctl -t podman-service -f
+
+          Docker Compatibility:
+          - Docker alias: /usr/local/bin/docker -> /usr/bin/podman
+          - Docker-compose alias: /usr/local/bin/docker-compose -> /usr/bin/podman-compose
+          - Use familiar Docker commands: docker run, docker ps, docker-compose up
+
+          Container Management:
+          - Run containers: docker run hello-world
+          - List containers: docker ps -a
+          - Manage images: docker images
+          - Use compose: docker-compose up -d
+
+    - name: Show Podman version
+      command: podman --version
+      register: podman_version
+      changed_when: false
+
+    - name: Display Podman version
+      debug:
+        msg: "{{ podman_version.stdout }}"

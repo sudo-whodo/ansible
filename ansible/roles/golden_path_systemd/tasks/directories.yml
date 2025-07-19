@@ -1,0 +1,33 @@
+---
+# Directory management tasks
+
+- name: Create service directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+    state: directory
+  become: true
+  loop: "{{ systemd_service_directories }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Create systemd service directory
+  ansible.builtin.file:
+    path: "/etc/systemd/system"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  become: true
+
+- name: Create systemd drop-in directory
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ systemd_service_name }}.service.d"
+    state: directory
+    mode: "2755"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+  become: true
+  when: systemd_service_drop_in_enabled | bool

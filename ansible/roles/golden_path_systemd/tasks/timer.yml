@@ -1,0 +1,129 @@
+---
+# Timer configuration tasks
+
+- name: Create timer file for service
+  ansible.builtin.copy:
+    content: |
+      # Systemd timer for {{ systemd_service_name }} service
+      # This timer can be used to run the service on a schedule
+      # Uncomment and customize the sections below as needed
+
+      [Unit]
+      Description=Timer for {{ systemd_service_description }}
+      Requires={{ systemd_service_name }}.service
+
+      # [Timer]
+      # # Run every hour
+      # OnCalendar=hourly
+      #
+      # # Run 5 minutes after boot and then every hour
+      # OnBootSec=5min
+      # OnUnitActiveSec=1h
+      #
+      # # Run daily at 2:30 AM
+      # OnCalendar=*-*-* 02:30:00
+      #
+      # # Run every 15 minutes
+      # OnCalendar=*:0/15
+      #
+      # # Randomize start time by up to 60 seconds
+      # RandomizedDelaySec=60
+      #
+      # # Persist timer across reboots
+      # Persistent=true
+      #
+      # # Accuracy (how close to the scheduled time)
+      # AccuracySec=1min
+
+      [Install]
+      WantedBy=timers.target
+    dest: "/etc/systemd/system/{{ systemd_service_name }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+    force: "{{ systemd_service_file_clobber | bool }}"
+  become: true
+
+- name: Create timer drop-in directory
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ systemd_service_name }}.timer.d"
+    state: directory
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "2755"
+  become: true
+
+- name: Create timer drop-in configuration template
+  ansible.builtin.copy:
+    content: |
+      # Timer drop-in configuration for {{ systemd_service_name }}
+      # This file can be used to override or extend the main timer configuration
+      # Uncomment and customize the sections below as needed
+
+      # [Timer]
+      # # Override the main timer schedule
+      # OnCalendar=
+      # OnCalendar=daily
+      #
+      # # Add additional timer options
+      # RandomizedDelaySec=300
+      # Persistent=true
+      #
+      # # Wake system from suspend to run timer
+      # WakeSystem=true
+
+      # [Unit]
+      # # Add additional dependencies
+      # After=network-online.target
+      # Wants=network-online.target
+      #
+      # # Add conditions
+      # ConditionPathExists=/opt/{{ systemd_service_name }}/enabled
+
+      # [Install]
+      # # Additional install options if needed
+      # Also={{ systemd_service_name }}.service
+    dest: "/etc/systemd/system/{{ systemd_service_name }}.timer.d/override.conf"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "0644"
+    force: false
+  become: true
+
+- name: Add timer management to sudoers
+  ansible.builtin.lineinfile:
+    path: "/etc/sudoers.d/DEFAULT-{{ systemd_service_name }}-service"
+    line: "      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl {{ item }} {{ systemd_service_name }}.timer"
+    insertafter: "systemctl edit {{ systemd_service_name }}.service"
+    state: present
+  become: true
+  loop:
+    - start
+    - stop
+    - restart
+    - reload
+    - status
+    - enable
+    - disable
+    - edit
+  when: systemd_service_sudo_enabled | bool
+
+- name: Test timer configuration
+  ansible.builtin.command:
+    cmd: "systemd-analyze verify /etc/systemd/system/{{ systemd_service_name }}.timer"
+  become: true
+  register: timer_verify_result
+  changed_when: false
+  failed_when: false
+
+- name: Display timer verification results
+  ansible.builtin.debug:
+    msg: |
+      Timer configuration verification for {{ systemd_service_name }}:
+      {{ 'PASSED' if timer_verify_result.rc == 0 else 'FAILED' }}
+      {% if timer_verify_result.stdout %}
+      Output: {{ timer_verify_result.stdout }}
+      {% endif %}
+      {% if timer_verify_result.stderr %}
+      Errors: {{ timer_verify_result.stderr }}
+      {% endif %}

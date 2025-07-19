@@ -1,0 +1,16 @@
+# ansible/requirements.yml
+# ansible-galaxy install -r ansible/requirements.yml -p ansible/roles
+#
+roles:
+  - name: golden_path_systemd
+  - src: https://github.com/sudo-whodo/ansible.git
+    scm: git
+    version: main
+    path: ansible/roles/golden_path_systemd
+    name: golden_path_systemd
+
+# Using the playbook
+#
+# - hosts: all
+#   roles:
+#     - golden_path_systemd

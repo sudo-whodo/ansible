@@ -1,0 +1,188 @@
+---
+# Sudo and Polkit configuration tasks
+
+- name: Install polkit package (Debian/Ubuntu)
+  package:
+    name: policykit-1
+    state: present
+  when:
+    - systemd_service_polkit_enabled | bool
+    - ansible_os_family == "Debian"
+
+- name: Install polkit package (RHEL/CentOS)
+  package:
+    name: polkit
+    state: present
+  when:
+    - systemd_service_polkit_enabled | bool
+    - ansible_os_family == "RedHat"
+
+- name: Create sudoers drop-in file for service group
+  copy:
+    content: |
+      # Allow {{ systemd_service_group }} group to manage {{ systemd_service_name }} service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl start {{ systemd_service_name }}.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl stop {{ systemd_service_name }}.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl restart {{ systemd_service_name }}.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl reload {{ systemd_service_name }}.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl status {{ systemd_service_name }}.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl enable {{ systemd_service_name }}.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl disable {{ systemd_service_name }}.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl edit {{ systemd_service_name }}.service
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl daemon-reload
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl daemon-reexec
+
+      # Socket management permissions
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl start {{ systemd_service_name }}.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl stop {{ systemd_service_name }}.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl restart {{ systemd_service_name }}.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl reload {{ systemd_service_name }}.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl status {{ systemd_service_name }}.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl enable {{ systemd_service_name }}.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl disable {{ systemd_service_name }}.socket
+
+      # Podman socket management (for container applications)
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl status podman.socket
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/systemctl status podman.service
+
+      # Allow switching to service account
+      %{{ systemd_service_group }} ALL=({{ systemd_service_user }}) NOPASSWD: ALL
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/su - {{ systemd_service_user }}
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/su {{ systemd_service_user }}
+
+      # Allow journalctl access for service logs
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/journalctl -u {{ systemd_service_name }}.service*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/journalctl -t {{ systemd_service_journalctl_log_tag }}*
+
+      # Network monitoring tools
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/ss*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/netstat*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/bin/ss*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/bin/netstat*
+
+      # Firewall management (iptables/ufw/firewalld)
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /sbin/iptables*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/sbin/iptables*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/bin/ufw*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/firewall-cmd*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/bin/firewall-cmd*
+
+      # SSL/TLS certificate management
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/bin/openssl*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/openssl*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/bin/certbot*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /opt/certbot/bin/certbot*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /snap/bin/certbot*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/local/bin/certbot*
+
+      # Logrotate management
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/sbin/logrotate*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /sbin/logrotate*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/logrotate*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /usr/bin/logrotate*
+
+      # File operations for service directories
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/chown /opt/{{ systemd_service_name }}*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/chgrp /opt/{{ systemd_service_name }}*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/chmod /opt/{{ systemd_service_name }}*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/chown /var/log/{{ systemd_service_name }}*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/chgrp /var/log/{{ systemd_service_name }}*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/chmod /var/log/{{ systemd_service_name }}*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/chown /var/lib/{{ systemd_service_name }}*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/chgrp /var/lib/{{ systemd_service_name }}*
+      %{{ systemd_service_group }} ALL=(root) NOPASSWD: /bin/chmod /var/lib/{{ systemd_service_name }}*
+
+      # Additional sudo rules (if defined)
+      {% if systemd_service_additional_sudo_rules is defined %}
+      {{ systemd_service_additional_sudo_rules }}
+      {% endif %}
+    dest: "/etc/sudoers.d/DEFAULT-{{ systemd_service_name }}-service"
+    owner: root
+    group: root
+    mode: "0440"
+    force: "{{ systemd_service_file_clobber | bool }}"
+    validate: 'visudo -cf %s'
+  become: true
+  when: systemd_service_sudo_enabled | bool
+
+- name: Create polkit rule for systemd service management
+  copy:
+    content: |
+      // Allow {{ systemd_service_group }} group to manage {{ systemd_service_name }} service without password
+      polkit.addRule(function(action, subject) {
+          if ((action.id == "org.freedesktop.systemd1.manage-units" ||
+               action.id == "org.freedesktop.systemd1.manage-unit-files" ||
+               action.id == "org.freedesktop.systemd1.reload-daemon") &&
+              action.lookup("unit") == "{{ systemd_service_name }}.service" &&
+              subject.isInGroup("{{ systemd_service_group }}")) {
+              return polkit.Result.YES;
+          }
+      });
+
+      // Allow {{ systemd_service_group }} group to reload systemd daemon
+      polkit.addRule(function(action, subject) {
+          if (action.id == "org.freedesktop.systemd1.reload-daemon" &&
+              subject.isInGroup("{{ systemd_service_group }}")) {
+              return polkit.Result.YES;
+          }
+      });
+
+      // Allow {{ systemd_service_group }} group to manage systemd socket
+      polkit.addRule(function(action, subject) {
+          if ((action.id == "org.freedesktop.systemd1.manage-units" ||
+               action.id == "org.freedesktop.systemd1.manage-unit-files") &&
+              action.lookup("unit") == "{{ systemd_service_name }}.socket" &&
+              subject.isInGroup("{{ systemd_service_group }}")) {
+              return polkit.Result.YES;
+          }
+      });
+    dest: "/etc/polkit-1/rules.d/DEFAULT-50-{{ systemd_service_name }}-service.rules"
+    owner: root
+    group: root
+    mode: "0644"
+    force: "{{ systemd_service_file_clobber | bool }}"
+  become: true
+  when: systemd_service_polkit_enabled | bool
+
+- name: Create polkit rule for network monitoring (Debian/Ubuntu)
+  copy:
+    content: |
+      // Allow {{ systemd_service_group }} group to use network monitoring tools
+      polkit.addRule(function(action, subject) {
+          if (action.id == "org.freedesktop.NetworkManager.network-control" &&
+              subject.isInGroup("{{ systemd_service_group }}")) {
+              return polkit.Result.YES;
+          }
+      });
+    dest: "/etc/polkit-1/rules.d/DEFAULT-51-{{ systemd_service_name }}-network.rules"
+    owner: root
+    group: root
+    mode: "0644"
+    force: "{{ systemd_service_file_clobber | bool }}"
+  become: true
+  when:
+    - systemd_service_polkit_enabled | bool
+    - ansible_os_family == "Debian"
+
+- name: Reload polkit configuration
+  systemd:
+    name: polkit
+    state: reloaded
+  become: true
+  when: systemd_service_polkit_enabled | bool
+  ignore_errors: true
+
+- name: Test sudo configuration for service group
+  command: sudo -l -U {{ systemd_service_user }}
+  register: sudo_test_result
+  changed_when: false
+  failed_when: false
+  become: true
+  when: systemd_service_sudo_enabled | bool
+
+- name: Display sudo test results
+  debug:
+    msg: |
+      Sudo configuration test for user {{ systemd_service_user }}:
+      {{ sudo_test_result.stdout if sudo_test_result.stdout else 'No sudo privileges configured' }}
+  when: systemd_service_sudo_enabled | bool

@@ -1,0 +1,14 @@
+---
+# Example playbook with disabled drop-in configuration
+
+- name: Deploy simple service without drop-in
+  hosts: simple
+  become: true
+  vars:
+    systemd_service_name: "simpleapp"
+    systemd_service_description: "Simple Application Service"
+    systemd_service_drop_in_enabled: false
+    systemd_service_exec_start: "/opt/simpleapp/bin/simpleapp"
+
+  roles:
+    - golden_path_systemd

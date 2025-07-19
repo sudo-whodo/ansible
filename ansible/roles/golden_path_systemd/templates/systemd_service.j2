@@ -1,0 +1,84 @@
+[Unit]
+Description={{ systemd_service_description }}
+After=network.target
+{% if systemd_service_wanted_by == "multi-user.target" %}
+After=multi-user.target
+{% endif %}
+
+[Service]
+Type={{ systemd_service_type }}
+User={{ systemd_service_user }}
+Group={{ systemd_service_group }}
+WorkingDirectory={{ systemd_service_working_directory }}
+ExecStart={{ systemd_service_exec_start }}
+{% if systemd_service_exec_reload is defined and systemd_service_exec_reload %}
+ExecReload={{ systemd_service_exec_reload }}
+{% endif %}
+Restart={{ systemd_service_restart }}
+RestartSec={{ systemd_service_restart_sec }}
+
+# Logging
+StandardOutput={{ systemd_service_standard_output }}
+StandardError={{ systemd_service_standard_error }}
+SyslogIdentifier={{ systemd_service_journalctl_log_tag }}
+
+# Security settings
+{% if systemd_service_no_new_privileges %}
+NoNewPrivileges={{ systemd_service_no_new_privileges | lower }}
+{% endif %}
+{% if systemd_service_protect_system %}
+ProtectSystem={{ systemd_service_protect_system }}
+{% endif %}
+{% if systemd_service_protect_home %}
+ProtectHome={{ systemd_service_protect_home | lower }}
+{% endif %}
+{% if systemd_service_private_tmp %}
+PrivateTmp={{ systemd_service_private_tmp | lower }}
+{% endif %}
+{% if systemd_service_private_devices %}
+PrivateDevices={{ systemd_service_private_devices | lower }}
+{% endif %}
+{% if systemd_service_protect_kernel_tunables %}
+ProtectKernelTunables={{ systemd_service_protect_kernel_tunables | lower }}
+{% endif %}
+{% if systemd_service_protect_kernel_modules %}
+ProtectKernelModules={{ systemd_service_protect_kernel_modules | lower }}
+{% endif %}
+{% if systemd_service_protect_control_groups %}
+ProtectControlGroups={{ systemd_service_protect_control_groups | lower }}
+{% endif %}
+{% if systemd_service_restrict_address_families %}
+RestrictAddressFamilies={{ systemd_service_restrict_address_families }}
+{% endif %}
+{% if systemd_service_restrict_namespaces %}
+RestrictNamespaces={{ systemd_service_restrict_namespaces | lower }}
+{% endif %}
+{% if systemd_service_lock_personality %}
+LockPersonality={{ systemd_service_lock_personality | lower }}
+{% endif %}
+{% if systemd_service_memory_deny_write_execute is defined %}
+MemoryDenyWriteExecute={{ systemd_service_memory_deny_write_execute | lower }}
+{% endif %}
+{% if systemd_service_restrict_realtime %}
+RestrictRealtime={{ systemd_service_restrict_realtime | lower }}
+{% endif %}
+{% if systemd_service_restrict_suid_sgid %}
+RestrictSUIDSGID={{ systemd_service_restrict_suid_sgid | lower }}
+{% endif %}
+{% if systemd_service_remove_ipc %}
+RemoveIPC={{ systemd_service_remove_ipc | lower }}
+{% endif %}
+{% if systemd_service_capability_bounding_set is defined and systemd_service_capability_bounding_set %}
+CapabilityBoundingSet={{ systemd_service_capability_bounding_set }}
+{% endif %}
+{% if systemd_service_ambient_capabilities is defined and systemd_service_ambient_capabilities %}
+AmbientCapabilities={{ systemd_service_ambient_capabilities }}
+{% endif %}
+
+# Environment variables
+{% for key, value in systemd_service_environment_vars.items() %}
+Environment="{{ key }}={{ value }}"
+{% endfor %}
+
+[Install]
+WantedBy={{ systemd_service_wanted_by }}

@@ -1,0 +1,143 @@
+---
+# Container Deployment Playbook using Golden Path Systemd Role
+# This playbook sets up a containerized application using podman-compose
+
+- name: Deploy Container Application using Golden Path Systemd
+  hosts: container_servers
+  become: true
+  vars:
+    # Service configuration
+    systemd_service_name: "app"
+    systemd_service_description: "Application Container Stack"
+    systemd_service_user: "app"
+    systemd_service_group: "app"
+
+    # Compose-specific variables
+    systemd_service_compose_file: "docker-compose.yml"
+    systemd_service_compose_project_name: "{{ systemd_service_name }}"
+    systemd_service_compose_working_dir: "/opt/{{ systemd_service_name }}/compose"
+
+    # Enable drop-in with compose configuration
+    systemd_service_drop_in_enabled: true
+    systemd_service_drop_in_config: |
+      [Unit]
+      After=podman.socket network-online.target
+      Wants=podman.socket network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=true
+
+      # Override default commands
+      ExecStart=
+      ExecStart=/usr/bin/podman-compose -f {{ systemd_service_compose_file }} -p {{ systemd_service_compose_project_name }} up -d
+      ExecStop=/usr/bin/podman-compose -f {{ systemd_service_compose_file }} -p {{ systemd_service_compose_project_name }} down
+      ExecReload=/usr/bin/podman-compose -f {{ systemd_service_compose_file }} -p {{ systemd_service_compose_project_name }} restart
+
+      WorkingDirectory={{ systemd_service_compose_working_dir }}
+      TimeoutStartSec=300
+      TimeoutStopSec=120
+
+      # Resource limits (commented - customize as needed)
+      # MemoryMax=4G
+      # CPUQuota=200%
+
+      # Environment variables (commented - add as needed)
+      # Environment="CUSTOM_VAR=value"
+
+    # Custom directories for compose application
+    systemd_service_directories:
+      - path: "/opt/{{ systemd_service_name }}/compose"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2755"
+      - path: "/opt/{{ systemd_service_name }}/compose/volumes"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2750"
+      - path: "/opt/{{ systemd_service_name }}/config"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2750"
+      - path: "/var/log/{{ systemd_service_name }}"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2755"
+      - path: "/var/lib/{{ systemd_service_name }}"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2750"
+
+    # Enable sudo access for container management
+    systemd_service_sudo_enabled: true
+    systemd_service_polkit_enabled: false
+
+    # Enable logging, disable timer by default
+    systemd_service_logrotate_enabled: true
+    systemd_service_timer_enabled: false
+
+  pre_tasks:
+    - name: Ensure podman and podman-compose are available
+      ansible.builtin.command:
+        cmd: "{{ item }} --version"
+      register: tool_check
+      changed_when: false
+      failed_when: tool_check.rc != 0
+      loop:
+        - podman
+        - podman-compose
+
+    - name: Create blank docker-compose.yml template
+      ansible.builtin.copy:
+        content: |
+          # Docker Compose configuration for {{ systemd_service_name }}
+          # Edit this file to define your application services
+
+          version: '3.8'
+
+          services:
+            # Define your services here
+            # Example:
+            # web:
+            #   image: nginx:alpine
+            #   ports:
+            #     - "8080:80"
+            #   volumes:
+            #     - ./volumes/html:/usr/share/nginx/html:ro
+            #   restart: unless-stopped
+        dest: "/opt/{{ systemd_service_name }}/compose/docker-compose.yml"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "0644"
+        force: false
+
+  roles:
+    - golden_path_systemd
+
+  post_tasks:
+    - name: Display container service information
+      ansible.builtin.debug:
+        msg: |
+          Container Service Setup Complete:
+          - Service: {{ systemd_service_name }}.service
+          - User: {{ systemd_service_user }}
+          - Group: {{ systemd_service_group }}
+          - Compose File: {{ systemd_service_compose_working_dir }}/{{ systemd_service_compose_file }}
+          - Project Name: {{ systemd_service_compose_project_name }}
+
+          Next Steps:
+          1. Edit the compose file: {{ systemd_service_compose_working_dir }}/{{ systemd_service_compose_file }}
+          2. Start the service: sudo systemctl start {{ systemd_service_name }}.service
+
+          Management Commands:
+          - Start: sudo systemctl start {{ systemd_service_name }}.service
+          - Stop: sudo systemctl stop {{ systemd_service_name }}.service
+          - Restart: sudo systemctl restart {{ systemd_service_name }}.service
+          - Reload: sudo systemctl reload {{ systemd_service_name }}.service
+          - Status: sudo systemctl status {{ systemd_service_name }}.service
+          - Logs: sudo journalctl -u {{ systemd_service_name }}.service -f
+
+          Compose Commands:
+          - cd {{ systemd_service_compose_working_dir }}
+          - sudo podman-compose ps
+          - sudo podman-compose logs

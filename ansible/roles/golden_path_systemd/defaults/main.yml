@@ -1,0 +1,104 @@
+---
+# Default systemd service role variables
+
+# Service configuration
+systemd_service_name: "app"
+systemd_service_description: "Default Application Service"
+systemd_service_type: "simple"
+systemd_service_restart: "always"
+systemd_service_restart_sec: "10"
+systemd_service_user: "{{ systemd_service_name }}"
+systemd_service_group: "{{ systemd_service_name }}"
+systemd_service_working_directory: "/opt/{{ systemd_service_name }}"
+systemd_service_exec_start: "/opt/{{ systemd_service_name }}/bin/{{ systemd_service_name }}"
+systemd_service_exec_reload: "/bin/kill -HUP $MAINPID"
+systemd_service_wanted_by: "multi-user.target"
+
+# User and group configuration
+systemd_service_user_shell: "/sbin/nologin"
+systemd_service_user_home: "none"
+systemd_service_user_system: true
+systemd_service_group_system: true
+
+# Directory configuration
+systemd_service_directories:
+  - path: "/opt/{{ systemd_service_name }}"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "2755"
+  - path: "/opt/{{ systemd_service_name }}/bin"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "2755"
+  - path: "/opt/{{ systemd_service_name }}/config"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "2750"
+  - path: "/var/log/{{ systemd_service_name }}"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "2755"
+  - path: "/var/lib/{{ systemd_service_name }}"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "2750"
+
+# Drop-in configuration (always enabled for user customization)
+systemd_service_drop_in_enabled: true
+systemd_service_drop_in_name: "override"
+systemd_service_drop_in_config: |
+  [Service]
+  # Additional service configuration
+  LimitNOFILE=65536
+  LimitNPROC=4096
+
+  [Unit]
+  # Additional unit configuration
+  After=network-online.target
+  Wants=network-online.target
+
+# Environment variables
+systemd_service_environment_vars: {}
+
+# Service state
+systemd_service_enabled: true
+systemd_service_started: true
+systemd_service_create_if_missing: true
+
+# Logging configuration
+systemd_service_standard_output: "journal"
+systemd_service_standard_error: "journal"
+systemd_service_syslog_identifier: "{{ systemd_service_name }}"
+systemd_service_journalctl_log_tag: "app"
+
+# Sudo and Polkit configuration (mutually exclusive - only one should be enabled)
+systemd_service_sudo_enabled: true
+systemd_service_polkit_enabled: false
+
+# File management
+systemd_service_file_clobber: false
+
+# Logrotate configuration
+systemd_service_logrotate_enabled: false
+
+# Timer configuration
+systemd_service_timer_enabled: false
+
+# Security settings
+systemd_service_no_new_privileges: true
+systemd_service_protect_system: "strict"
+systemd_service_protect_home: true
+systemd_service_private_tmp: true
+systemd_service_private_devices: true
+systemd_service_protect_kernel_tunables: true
+systemd_service_protect_kernel_modules: true
+systemd_service_protect_control_groups: true
+systemd_service_restrict_address_families: "AF_UNIX AF_INET AF_INET6"
+systemd_service_restrict_namespaces: true
+systemd_service_lock_personality: true
+systemd_service_memory_deny_write_execute: false
+systemd_service_restrict_realtime: true
+systemd_service_restrict_suid_sgid: true
+systemd_service_remove_ipc: true
+systemd_service_capability_bounding_set: ""
+systemd_service_ambient_capabilities: ""

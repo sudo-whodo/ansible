@@ -1,0 +1,40 @@
+---
+# Main tasks for golden_path_systemd role
+- name: Include user and group management tasks
+  ansible.builtin.include_tasks: user_group.yml
+
+- name: Include directory management tasks
+  ansible.builtin.include_tasks: directories.yml
+
+- name: Include systemd service management tasks
+  ansible.builtin.include_tasks: systemd_service.yml
+
+- name: Include drop-in configuration tasks
+  include_tasks: drop_in.yml
+  when: systemd_service_drop_in_enabled | bool
+
+- name: Include sudo and polkit configuration tasks
+  ansible.builtin.include_tasks: sudo_polkit.yml
+  when: systemd_service_sudo_enabled | bool or systemd_service_polkit_enabled | bool
+
+- name: Include logrotate configuration tasks
+  ansible.builtin.include_tasks: logrotate.yml
+  when: systemd_service_logrotate_enabled | bool
+
+- name: Include timer configuration tasks
+  ansible.builtin.include_tasks: timer.yml
+  when: systemd_service_timer_enabled | bool
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+  notify: Restart systemd service
+
+- name: Enable and start systemd service
+  ansible.builtin.systemd:
+    name: "{{ systemd_service_name }}.service"
+    enabled: "{{ systemd_service_enabled }}"
+    state: "{{ 'started' if systemd_service_started else 'stopped' }}"
+  become: true
+  when: systemd_service_enabled | bool or systemd_service_started | bool

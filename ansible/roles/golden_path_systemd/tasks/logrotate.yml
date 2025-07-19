@@ -1,0 +1,100 @@
+---
+# Logrotate configuration tasks
+
+- name: Create logrotate configuration directory
+  ansible.builtin.file:
+    path: "/etc/logrotate.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Create logrotate configuration template for service
+  ansible.builtin.copy:
+    content: |
+      # Logrotate configuration for {{ systemd_service_name }} service
+      # Uncomment and customize the sections below as needed for your service
+
+      # Basic log rotation for service log files
+      # /var/log/{{ systemd_service_name }}/*.log {
+      #     daily
+      #     missingok
+      #     rotate 30
+      #     compress
+      #     delaycompress
+      #     notifempty
+      #     create 0644 {{ systemd_service_user }} {{ systemd_service_group }}
+      #     postrotate
+      #         # Send HUP signal to service to reopen log files
+      #         /bin/systemctl reload {{ systemd_service_name }}.service > /dev/null 2>&1 || true
+      #     endscript
+      # }
+
+      # Additional log files that might be created by the service in subdirectories
+      # /var/log/{{ systemd_service_name }}/*/*.log {
+      #     daily
+      #     missingok
+      #     rotate 30
+      #     compress
+      #     delaycompress
+      #     notifempty
+      #     create 0644 {{ systemd_service_user }} {{ systemd_service_group }}
+      #     postrotate
+      #         /bin/systemctl reload {{ systemd_service_name }}.service > /dev/null 2>&1 || true
+      #     endscript
+      # }
+
+      # Example: Weekly rotation with different settings
+      # /var/log/{{ systemd_service_name }}/access.log {
+      #     weekly
+      #     missingok
+      #     rotate 52
+      #     compress
+      #     delaycompress
+      #     notifempty
+      #     create 0644 {{ systemd_service_user }} {{ systemd_service_group }}
+      #     postrotate
+      #         /bin/systemctl reload {{ systemd_service_name }}.service > /dev/null 2>&1 || true
+      #     endscript
+      # }
+
+      # Example: Error logs with different retention
+      # /var/log/{{ systemd_service_name }}/error.log {
+      #     daily
+      #     missingok
+      #     rotate 90
+      #     compress
+      #     delaycompress
+      #     notifempty
+      #     create 0644 {{ systemd_service_user }} {{ systemd_service_group }}
+      #     postrotate
+      #         /bin/systemctl reload {{ systemd_service_name }}.service > /dev/null 2>&1 || true
+      #     endscript
+      # }
+    dest: "/etc/logrotate.d/{{ systemd_service_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: "{{ systemd_service_file_clobber | bool }}"
+  become: true
+
+- name: Test logrotate configuration
+  ansible.builtin.command:
+    cmd: "logrotate -d /etc/logrotate.d/{{ systemd_service_name }}"
+  become: true
+  register: logrotate_test_result
+  changed_when: false
+  failed_when: false
+
+- name: Display logrotate test results
+  ansible.builtin.debug:
+    msg: |
+      Logrotate configuration test for {{ systemd_service_name }}:
+      {{ 'PASSED' if logrotate_test_result.rc == 0 else 'FAILED' }}
+      {% if logrotate_test_result.stdout %}
+      Output: {{ logrotate_test_result.stdout }}
+      {% endif %}
+      {% if logrotate_test_result.stderr %}
+      Errors: {{ logrotate_test_result.stderr }}
+      {% endif %}

@@ -1,0 +1,36 @@
+---
+# Meta information for golden_path_systemd role
+
+galaxy_info:
+  author: System Administrator
+  description: A role for managing default systemd services with local user/group management and drop-in configurations
+  company: Organization
+  license: MIT
+  min_ansible_version: "2.9"
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+    - name: Ubuntu
+      versions:
+        - "bionic"
+        - "focal"
+        - "jammy"
+    - name: Debian
+      versions:
+        - "buster"
+        - "bullseye"
+        - "bookworm"
+  galaxy_tags:
+    - systemd
+    - service
+    - system
+    - daemon
+    - linux
+
+dependencies: []
+
+collections:
+  - ansible.posix

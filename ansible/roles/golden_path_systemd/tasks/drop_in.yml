@@ -1,0 +1,82 @@
+---
+# Drop-in configuration tasks
+
+- name: Create systemd drop-in configuration file (new service)
+  ansible.builtin.copy:
+    content: "{{ systemd_service_drop_in_config }}"
+    dest: "/etc/systemd/system/{{ systemd_service_name }}.service.d/{{ systemd_service_drop_in_name }}.conf"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "0644"
+    backup: true
+  become: true
+  when: not existing_service_file.stat.exists or systemd_service_create_if_missing | bool
+  notify:
+    - Reload systemd daemon
+    - Restart systemd service
+
+- name: Create blank drop-in configuration file with instructions (existing service)
+  ansible.builtin.copy:
+    content: |
+      # Override configuration for {{ systemd_service_name }}.service
+      # This file allows you to customize the systemd service without modifying the main service file
+      #
+      # Common override examples:
+      #
+      # [Service]
+      # # Change resource limits
+      # LimitNOFILE=100000
+      # LimitNPROC=8192
+      # MemoryMax=2G
+      # CPUQuota=200%
+      #
+      # # Add environment variables
+      # Environment="MY_VAR=value"
+      # Environment="ANOTHER_VAR=another_value"
+      #
+      # # Change restart behavior
+      # Restart=on-failure
+      # RestartSec=30
+      #
+      # [Unit]
+      # # Add dependencies
+      # After=network-online.target
+      # Wants=network-online.target
+      # After=postgresql.service
+      # Requires=postgresql.service
+      #
+      # # Add description
+      # Description=My Custom {{ systemd_service_name | title }} Service
+      #
+      # After making changes, run:
+      # sudo systemctl daemon-reload
+      # sudo systemctl restart {{ systemd_service_name }}.service
+    dest: "/etc/systemd/system/{{ systemd_service_name }}.service.d/{{ systemd_service_drop_in_name }}.conf"
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "0644"
+    force: false
+  become: true
+  when: existing_service_file.stat.exists and not (systemd_service_create_if_missing | bool)
+
+- name: Ensure drop-in directory permissions are correct
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ systemd_service_name }}.service.d"
+    state: directory
+    owner: "{{ systemd_service_user }}"
+    group: "{{ systemd_service_group }}"
+    mode: "2755"
+    recurse: true
+  become: true
+
+- name: Validate drop-in configuration syntax
+  ansible.builtin.command:
+    cmd: "systemd-analyze verify /etc/systemd/system/{{ systemd_service_name }}.service"
+  become: true
+  register: drop_in_verify_result
+  failed_when: drop_in_verify_result.rc != 0
+  changed_when: false
+
+- name: Display drop-in configuration validation result
+  ansible.builtin.debug:
+    msg: "Drop-in configuration validation: {{ 'PASSED' if drop_in_verify_result.rc == 0 else 'FAILED' }}"

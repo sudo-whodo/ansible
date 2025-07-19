@@ -1,0 +1,116 @@
+---
+# Example: Container Application using Compose with Golden Path Systemd
+# This example sets up the initial configuration for users to deploy containerized applications
+
+- name: Deploy Container Application using Golden Path Systemd
+  hosts: container_servers
+  become: true
+  vars:
+    # Service configuration
+    systemd_service_name: "app"
+    systemd_service_description: "Application Container Stack"
+    systemd_service_user: "app"
+    systemd_service_group: "app"
+
+    # Compose-specific drop-in configuration
+    systemd_service_drop_in_config: |
+      [Unit]
+      After=podman.socket network-online.target
+      Wants=podman.socket network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=true
+
+      # Override default commands for compose
+      ExecStart=
+      ExecStart=/usr/bin/podman-compose -f docker-compose.yml -p {{ systemd_service_name }} up -d
+      ExecStop=/usr/bin/podman-compose -f docker-compose.yml -p {{ systemd_service_name }} down
+      ExecReload=/usr/bin/podman-compose -f docker-compose.yml -p {{ systemd_service_name }} restart
+
+      WorkingDirectory=/opt/{{ systemd_service_name }}/compose
+      TimeoutStartSec=300
+      TimeoutStopSec=120
+
+      # Resource limits (commented - customize as needed)
+      # MemoryMax=4G
+      # CPUQuota=200%
+
+      # Environment variables (commented - add as needed)
+      # Environment="CUSTOM_VAR=value"
+
+    # Custom directories for compose application
+    systemd_service_directories:
+      - path: "/opt/{{ systemd_service_name }}/compose"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2755"
+      - path: "/opt/{{ systemd_service_name }}/compose/volumes"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2750"
+      - path: "/opt/{{ systemd_service_name }}/config"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2750"
+      - path: "/var/log/{{ systemd_service_name }}"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2755"
+      - path: "/var/lib/{{ systemd_service_name }}"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "2750"
+
+    # Enable sudo access and logging
+    systemd_service_sudo_enabled: true
+    systemd_service_logrotate_enabled: true
+    systemd_service_timer_enabled: false
+
+  pre_tasks:
+    - name: Create blank docker-compose.yml template
+      ansible.builtin.copy:
+        content: |
+          # Docker Compose configuration for {{ systemd_service_name }}
+          # Edit this file to define your application services
+
+          version: '3.8'
+
+          services:
+            # Define your services here
+            # Example:
+            # web:
+            #   image: nginx:alpine
+            #   ports:
+            #     - "8080:80"
+            #   volumes:
+            #     - ./volumes/html:/usr/share/nginx/html:ro
+            #   restart: unless-stopped
+        dest: "/opt/{{ systemd_service_name }}/compose/docker-compose.yml"
+        owner: "{{ systemd_service_user }}"
+        group: "{{ systemd_service_group }}"
+        mode: "0644"
+        force: false
+
+  roles:
+    - golden_path_systemd
+
+  post_tasks:
+    - name: Display setup information
+      ansible.builtin.debug:
+        msg: |
+          Container Service Setup Complete:
+          - Service: {{ systemd_service_name }}.service
+          - User: {{ systemd_service_user }}
+          - Group: {{ systemd_service_group }}
+          - Compose File: /opt/{{ systemd_service_name }}/compose/docker-compose.yml
+
+          Next Steps:
+          1. Edit the compose file: /opt/{{ systemd_service_name }}/compose/docker-compose.yml
+          2. Start the service: sudo systemctl start {{ systemd_service_name }}.service
+
+          Management Commands:
+          - sudo systemctl start {{ systemd_service_name }}.service
+          - sudo systemctl stop {{ systemd_service_name }}.service
+          - sudo systemctl status {{ systemd_service_name }}.service
+          - sudo journalctl -u {{ systemd_service_name }}.service -f

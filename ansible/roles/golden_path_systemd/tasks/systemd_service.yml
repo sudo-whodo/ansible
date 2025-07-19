@@ -1,0 +1,34 @@
+---
+# Systemd service management tasks
+
+- name: Check if systemd service file already exists
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ systemd_service_name }}.service"
+  register: existing_service_file
+  become: true
+
+- name: Create systemd service file
+  ansible.builtin.template:
+    src: systemd_service.j2
+    dest: "/etc/systemd/system/{{ systemd_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  become: true
+  when: not existing_service_file.stat.exists or systemd_service_create_if_missing | bool
+  notify:
+    - Reload systemd daemon
+    - Restart systemd service
+
+- name: Validate systemd service file syntax
+  ansible.builtin.command:
+    cmd: "systemd-analyze verify /etc/systemd/system/{{ systemd_service_name }}.service"
+  become: true
+  register: systemd_verify_result
+  failed_when: systemd_verify_result.rc != 0
+  changed_when: false
+
+- name: Display systemd service validation result
+  ansible.builtin.debug:
+    msg: "Systemd service file validation: {{ 'PASSED' if systemd_verify_result.rc == 0 else 'FAILED' }}"

@@ -1,0 +1,54 @@
+---
+# Basic example playbook for using the golden_path_systemd role
+
+- name: Deploy default systemd service
+  hosts: servers
+  become: true
+  vars:
+    # Basic service configuration
+    systemd_service_name: "app"
+    systemd_service_description: "Default Application Service"
+
+    # Custom journalctl log tag for filtering logs
+    systemd_service_journalctl_log_tag: "customer"
+
+    # Custom environment variables
+    systemd_service_environment_vars:
+      APP_ENV: "production"
+      LOG_LEVEL: "info"
+      DATA_DIR: "/var/lib/app"
+
+    # Custom drop-in configuration
+    systemd_service_drop_in_config: |
+      [Service]
+      # Resource limits
+      LimitNOFILE=65536
+      LimitNPROC=4096
+
+      # Memory limits
+      MemoryMax=2G
+      MemorySwapMax=0
+
+      [Unit]
+      # Dependencies
+      After=network-online.target
+      Wants=network-online.target
+
+  roles:
+    - golden_path_systemd
+
+  post_tasks:
+    - name: Display service status
+      ansible.builtin.systemd:
+        name: "{{ systemd_service_name }}.service"
+      register: service_status
+
+    - name: Show service information
+      ansible.builtin.debug:
+        msg: |
+          Service: {{ systemd_service_name }}.service
+          Status: {{ service_status.status.ActiveState }}
+          Enabled: {{ service_status.status.UnitFileState }}
+          User: {{ systemd_service_user }}
+          Group: {{ systemd_service_group }}
+          Working Directory: {{ systemd_service_working_directory }}

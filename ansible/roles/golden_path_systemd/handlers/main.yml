@@ -1,0 +1,26 @@
+---
+# Handlers for golden_path_systemd role
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+- name: Restart systemd service
+  ansible.builtin.systemd:
+    name: "{{ systemd_service_name }}.service"
+    state: restarted
+  become: true
+  when: systemd_service_started | bool
+
+- name: Stop systemd service
+  ansible.builtin.systemd:
+    name: "{{ systemd_service_name }}.service"
+    state: stopped
+  become: true
+
+- name: Start systemd service
+  ansible.builtin.systemd:
+    name: "{{ systemd_service_name }}.service"
+    state: started
+  become: true
