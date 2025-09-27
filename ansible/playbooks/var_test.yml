@@ -1,0 +1,42 @@
+---
+# Ansible playbook to test variable input and output
+# Usage: ansible-playbook var_test.yml -e "variable_name=my_var" -e "my_var=some_value"
+- name: Variable Test Playbook
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    # Define some example variables for testing
+    # example_var: "This is an example variable"
+
+  tasks:
+    - name: Check if variable_name is provided
+      fail:
+        msg: "Please provide a variable_name parameter: -e 'variable_name=<name_of_variable>'"
+      when: variable_name is not defined
+
+    - name: Display the requested variable name
+      debug:
+        msg: "Looking up variable: {{ variable_name }}"
+
+    - name: Check if the variable exists
+      debug:
+        msg: "Variable '{{ variable_name }}' exists: {{ vars[variable_name] is defined }}"
+
+    - name: Display the value of the requested variable
+      debug:
+        msg: "The value of '{{ variable_name }}' is: {{ vars[variable_name] }}"
+      when: vars[variable_name] is defined
+
+    - name: Display detailed information about the variable
+      debug:
+        msg:
+          - "Variable name: {{ variable_name }}"
+          - "Variable value: {{ vars[variable_name] }}"
+          - "Variable type: {{ vars[variable_name] | type_debug }}"
+      when: vars[variable_name] is defined
+
+    - name: Display variable not found message
+      debug:
+        msg: "Variable '{{ variable_name }}' is not defined"
+      when: vars[variable_name] is not defined
