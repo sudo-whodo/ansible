@@ -1,0 +1,66 @@
+---
+# Playbook to safely add SSH authorized key with input sanitization
+#
+# Required Variables:
+#   username       - The user to add the SSH key for
+#   ssh_key        - The SSH public key to add
+#
+# Optional Variables:
+#   target_hosts   - Hosts to run on (default: all)
+#   key_options    - SSH key options (default: none)
+#   exclusive      - Whether to remove all other keys (default: no)
+#
+# Usage:
+#   ansible-playbook add_ssh_key.yml -e "username=deploy ssh_key='ssh-rsa AAAAB3...'"
+#   ansible-playbook add_ssh_key.yml -e "username=deploy ssh_key='ssh-rsa AAAAB3...' exclusive=yes"
+
+- name: Add SSH Authorized Key with Sanitization
+  hosts: "{{ target_hosts | default('all') }}"
+  become: yes
+
+  tasks:
+    - name: Validate username format
+      ansible.builtin.assert:
+        that:
+          - username is defined
+          - username is match('^[a-zA-Z0-9_][a-zA-Z0-9_-]*$')
+          - username | length <= 32
+        fail_msg: "Invalid username format. Must be alphanumeric with underscores/hyphens, starting with letter/number/underscore"
+        success_msg: "Username '{{ username }}' is valid"
+
+    - name: Validate SSH key format
+      ansible.builtin.assert:
+        that:
+          - ssh_key is defined
+          - ssh_key is match('^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|ssh-dss) [A-Za-z0-9+/]+=* ?.*$')
+        fail_msg: "Invalid SSH key format. Must be a valid SSH public key"
+        success_msg: "SSH key format is valid"
+
+    - name: Sanitize SSH key (remove potential command injection)
+      ansible.builtin.set_fact:
+        sanitized_key: "{{ ssh_key | regex_replace('[;&|`$()<>]', '') | trim }}"
+
+    - name: Validate key options if provided
+      when: key_options is defined
+      ansible.builtin.assert:
+        that:
+          - key_options is match('^[a-zA-Z0-9,=.\-\s]*$')
+        fail_msg: "Invalid key options. Only alphanumeric, comma, equals, dot, hyphen and spaces allowed"
+        success_msg: "Key options are valid"
+
+    - name: Add authorized key
+      ansible.posix.authorized_key:
+        user: "{{ username }}"
+        key: "{{ sanitized_key }}"
+        key_options: "{{ key_options | default(omit) }}"
+        state: present
+        exclusive: "{{ exclusive | default('no') }}"
+        validate_certs: yes
+      register: key_result
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg:
+          - "SSH key {{ 'added' if key_result.changed else 'already present' }} for user: {{ username }}"
+          - "Key type: {{ sanitized_key.split()[0] }}"
+          - "Exclusive mode: {{ exclusive | default('no') }}"
