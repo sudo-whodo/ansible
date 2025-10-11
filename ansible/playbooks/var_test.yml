@@ -2,7 +2,7 @@
 # Ansible playbook to test variable input and output
 # Usage: ansible-playbook var_test.yml -e "variable_name=my_var" -e "my_var=some_value"
 - name: Variable Test Playbook
-  hosts: localhost
+  hosts: all
   gather_facts: no
 
   vars:
