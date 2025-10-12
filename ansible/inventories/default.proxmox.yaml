@@ -18,4 +18,4 @@ filters:
 
 # Set ansible_host to the VM's IP address
 compose:
-  ansible_host: proxmox_agent_interfaces[1]["ip-addresses"][0].split('/')[0]
+  ansible_host: (proxmox_agent_interfaces[0]["ip-addresses"][0].split('/')[0]) | default(proxmox_name)
