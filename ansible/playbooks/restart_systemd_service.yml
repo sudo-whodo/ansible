@@ -3,14 +3,13 @@
   hosts: all
   gather_facts: yes
   become: yes
-  vars:
-    service_name: "{{ service_name | default('') }}"
+  serial: 1
 
   tasks:
     - name: Validate service_name variable is provided
       ansible.builtin.fail:
         msg: "Error: service_name variable is required. Please provide it using -e service_name=<service>"
-      when: service_name == ''
+      when: service_name is not defined or service_name == ''
 
     - name: Announce service restart operation
       ansible.builtin.debug:
