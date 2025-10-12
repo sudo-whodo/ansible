@@ -1,0 +1,257 @@
+---
+# GitHub Release Deployment Playbook
+# Downloads files from the latest GitHub release and deploys them to remote servers
+#
+# Required variables:
+#   - repo_org: GitHub organization/user name
+#   - repo_name: GitHub repository name
+#   - files_to_deploy: List of files to download and deploy
+#
+# Optional variables:
+#   - github_token: GitHub API token (for private repos or higher rate limits)
+#   - application_version: Specific version to deploy (defaults to 'latest')
+#   - file_owner: Owner for deployed files (defaults to 'root')
+#   - file_group: Group for deployed files (defaults to 'root')
+#   - service_name: Service to restart after deployment
+#   - chain_spec_url: URL for chain spec file (blockchain specific)
+#   - chain_spec_dest: Destination for chain spec file
+
+- name: Deploy files from GitHub release
+  hosts: all
+  become: true
+  serial: 1
+  vars:
+    file_owner: "{{ file_owner | default('root') }}"
+    file_group: "{{ file_group | default('root') }}"
+    application_version: "{{ application_version | default('latest') }}"
+
+  tasks:
+    # ============================================
+    # Get Latest Release Information
+    # ============================================
+
+    - name: Get latest release using GitHub API token
+      when: github_token is defined
+      block:
+        - name: Fetch latest release with authentication
+          community.general.github_release:
+            token: "{{ github_token }}"
+            user: "{{ repo_org }}"
+            repo: "{{ repo_name }}"
+            action: latest_release
+          register: github_release_auth
+          delegate_to: localhost
+          become: false
+          run_once: true
+
+        - name: Set application version from authenticated request
+          ansible.builtin.set_fact:
+            application_version: "{{ github_release_auth.tag }}"
+          when: application_version == 'latest'
+
+        - name: Display release information (authenticated)
+          ansible.builtin.debug:
+            msg: "Using release: {{ application_version }}"
+
+    - name: Get latest release without API token
+      when: github_token is not defined
+      block:
+        - name: Fetch latest release without authentication
+          ansible.builtin.uri:
+            url: "https://api.github.com/repos/{{ repo_org }}/{{ repo_name }}/releases/latest"
+            body_format: json
+            method: GET
+          register: github_release_noauth
+          until: github_release_noauth.status == 200
+          retries: 5
+          delay: 2
+          delegate_to: localhost
+          become: false
+          run_once: true
+
+        - name: Set application version from unauthenticated request
+          ansible.builtin.set_fact:
+            application_version: "{{ github_release_noauth.json.tag_name }}"
+          when:
+            - application_version == 'latest'
+            - not ansible_check_mode
+
+        - name: Display release information (unauthenticated)
+          ansible.builtin.debug:
+            msg: "Using release: {{ application_version }}"
+
+    # ============================================
+    # Download and Deploy Files
+    # ============================================
+
+    - name: Display download base URL
+      ansible.builtin.debug:
+        msg: "Download URL: https://github.com/{{ repo_org }}/{{ repo_name }}/releases/download/{{ application_version }}/"
+      run_once: true
+
+    - name: Process each file to deploy
+      when: files_to_deploy is defined
+      block:
+        - name: Create temporary download directory
+          ansible.builtin.file:
+            path: /tmp/github_release_{{ repo_name }}
+            state: directory
+            mode: '0755'
+            owner: "{{ file_owner }}"
+            group: "{{ file_group }}"
+
+        - name: Download files from GitHub release
+          ansible.builtin.get_url:
+            url: "https://github.com/{{ repo_org }}/{{ repo_name }}/releases/download/{{ application_version }}/{{ item.source_file }}"
+            dest: "/tmp/github_release_{{ repo_name }}/{{ item.source_file }}"
+            mode: "0644"
+            owner: "{{ file_owner }}"
+            group: "{{ file_group }}"
+            force: true
+          loop: "{{ files_to_deploy | flatten }}"
+          loop_control:
+            label: "{{ item.source_file }}"
+
+        # ============================================
+        # Handle tar.gz Archives
+        # ============================================
+
+        - name: Process tar.gz archives
+          when: item.source_file is regex('.*\.tar\.gz$')
+          block:
+            - name: Create extraction directory for archive
+              ansible.builtin.file:
+                path: "/tmp/github_release_{{ repo_name }}/extract_{{ item.source_file | regex_replace('\\.tar\\.gz$', '') }}"
+                state: directory
+                mode: '0755'
+                owner: "{{ file_owner }}"
+                group: "{{ file_group }}"
+
+            - name: Extract tar.gz archive
+              ansible.builtin.unarchive:
+                remote_src: true
+                src: "/tmp/github_release_{{ repo_name }}/{{ item.source_file }}"
+                dest: "/tmp/github_release_{{ repo_name }}/extract_{{ item.source_file | regex_replace('\\.tar\\.gz$', '') }}"
+                owner: "{{ file_owner }}"
+                group: "{{ file_group }}"
+              register: unarchive_result
+
+            - name: Find extracted files
+              ansible.builtin.find:
+                paths: "/tmp/github_release_{{ repo_name }}/extract_{{ item.source_file | regex_replace('\\.tar\\.gz$', '') }}"
+                recurse: yes
+                file_type: file
+                patterns: "{{ item.extract_pattern | default('*') }}"
+              register: found_files
+
+            - name: Deploy extracted files
+              ansible.builtin.copy:
+                src: "{{ found_file.path }}"
+                dest: "{{ item.dest_path }}/{{ found_file.path | basename }}"
+                remote_src: true
+                owner: "{{ file_owner }}"
+                group: "{{ file_group }}"
+                mode: "{{ item.file_mode | default('0755') }}"
+                force: true
+              loop: "{{ found_files.files }}"
+              loop_control:
+                loop_var: found_file
+                label: "{{ found_file.path | basename }} -> {{ item.dest_path }}"
+              when:
+                - found_files.files is defined
+                - found_files.files | length > 0
+              notify:
+                - restart service
+
+          loop: "{{ files_to_deploy | selectattr('source_file', 'regex', '.*\\.tar\\.gz$') | list }}"
+          loop_control:
+            label: "{{ item.source_file }}"
+
+        # ============================================
+        # Handle Regular Files
+        # ============================================
+
+        - name: Deploy regular files (non-archives)
+          ansible.builtin.copy:
+            src: "/tmp/github_release_{{ repo_name }}/{{ item.source_file }}"
+            remote_src: true
+            dest: "{{ item.dest_path }}/{{ item.dest_name | default(item.source_file) }}"
+            owner: "{{ file_owner }}"
+            group: "{{ file_group }}"
+            mode: "{{ item.file_mode | default('0755') }}"
+            force: true
+          when: item.source_file is not regex('.*\.tar\.gz$')
+          loop: "{{ files_to_deploy | flatten }}"
+          loop_control:
+            label: "{{ item.source_file }} -> {{ item.dest_path }}/{{ item.dest_name | default(item.source_file) }}"
+          notify:
+            - restart service
+          register: deployment_result
+
+        # ============================================
+        # Optional: Download Chain Spec (Blockchain specific)
+        # ============================================
+
+        - name: Download chain spec file
+          ansible.builtin.get_url:
+            url: "{{ chain_spec_url }}"
+            dest: "{{ chain_spec_dest }}"
+            owner: "{{ file_owner }}"
+            group: "{{ file_group }}"
+            mode: "0644"
+          when:
+            - chain_spec_url is defined
+            - chain_spec_dest is defined
+
+        # ============================================
+        # Cleanup
+        # ============================================
+
+        - name: Clean up temporary files
+          ansible.builtin.file:
+            path: /tmp/github_release_{{ repo_name }}
+            state: absent
+          when: cleanup_temp_files | default(true)
+
+    # ============================================
+    # Service Management (if applicable)
+    # ============================================
+
+    - name: Handle service restart if files were updated
+      when:
+        - deployment_result is defined
+        - deployment_result.changed
+        - service_name is defined
+      block:
+        - name: Flush handlers immediately
+          ansible.builtin.meta: flush_handlers
+
+        - name: Wait for service to stabilize
+          ansible.builtin.pause:
+            seconds: "{{ service_stabilization_time | default(30) }}"
+
+        - name: Verify service status
+          ansible.builtin.systemd:
+            name: "{{ service_name }}"
+            state: started
+          register: service_status
+
+        - name: Check if service is active
+          ansible.builtin.assert:
+            that:
+              - service_status.status.ActiveState == "active"
+            fail_msg: "Service {{ service_name }} is not running as expected"
+            success_msg: "Service {{ service_name }} is running successfully"
+
+  # ============================================
+  # Handlers
+  # ============================================
+
+  handlers:
+    - name: restart service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        daemon_reload: true
+      when: service_name is defined
+      listen: "restart service"
