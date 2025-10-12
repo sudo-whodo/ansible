@@ -1,0 +1,64 @@
+---
+- name: Restart systemd service
+  hosts: all
+  gather_facts: yes
+  become: yes
+  vars:
+    service_name: "{{ service_name | default('') }}"
+
+  tasks:
+    - name: Validate service_name variable is provided
+      ansible.builtin.fail:
+        msg: "Error: service_name variable is required. Please provide it using -e service_name=<service>"
+      when: service_name == ''
+
+    - name: Announce service restart operation
+      ansible.builtin.debug:
+        msg: "Starting service restart operation for '{{ service_name }}' on host '{{ inventory_hostname }}'"
+
+    - name: Check if service exists
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+      register: service_status
+      failed_when: false
+      changed_when: false
+
+    - name: Service existence check result
+      ansible.builtin.debug:
+        msg: "Service '{{ service_name }}' exists on '{{ inventory_hostname }}': {{ service_status.status is defined }}"
+
+    - name: Fail if service does not exist
+      ansible.builtin.fail:
+        msg: "Error: Service '{{ service_name }}' does not exist on host '{{ inventory_hostname }}'"
+      when: service_status.status is not defined
+
+    - name: Display current service status
+      ansible.builtin.debug:
+        msg: "Current status of '{{ service_name }}' on '{{ inventory_hostname }}': {{ service_status.status.ActiveState | default('unknown') }}"
+      when: service_status.status is defined
+
+    - name: Restart the service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        daemon_reload: yes
+      register: restart_result
+      when: service_status.status is defined
+
+    - name: Report restart completion
+      ansible.builtin.debug:
+        msg: "Successfully restarted '{{ service_name }}' on host '{{ inventory_hostname }}'"
+      when: restart_result is changed
+
+    - name: Verify service is running after restart
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+      register: final_status
+      failed_when: false
+      changed_when: false
+      when: restart_result is changed
+
+    - name: Display final service status
+      ansible.builtin.debug:
+        msg: "Final status of '{{ service_name }}' on '{{ inventory_hostname }}': {{ final_status.status.ActiveState | default('unknown') }}"
+      when: restart_result is changed
